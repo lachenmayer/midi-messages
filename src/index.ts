@@ -1,5 +1,6 @@
 // Status bytes are the only bytes that have the most significant bit set.
 // MIDI Spec 1.0 Page 100, Table 1
+// https://www.midi.org/specifications/item/table-1-summary-of-midi-message
 const statusBytes = {
   // Channel voice messages
   // The second nibble is used to encode the channel (0-F).
@@ -49,8 +50,10 @@ const controlNumbers = {
 // Indicates end of a sysex transmission.
 const eox = 0xf7
 
-// Encodes a single MIDI message.
-export function encode(message: MIDIMessage): number[] {
+// Encodes a single MIDI message. Returns an array of encoded messages.
+// The reason we return an array is that certain message types encode
+// to multiple messages, ie. CC messages with fine-grained values.
+export function encode(message: MIDIMessage): EncodedMessage[] {
   switch (message.type) {
     //
     // Channel messages
@@ -60,106 +63,119 @@ export function encode(message: MIDIMessage): number[] {
 
     case 'NoteOff': {
       return [
-        channelVoiceStatus(statusBytes.NoteOff, message.channel),
-        u7(message.velocity),
+        [
+          channelVoiceStatus(statusBytes.NoteOff, message.channel),
+          u7(message.note),
+          u7(message.velocity),
+        ],
       ]
     }
     case 'NoteOn': {
       return [
-        channelVoiceStatus(statusBytes.NoteOn, message.channel),
-        u7(message.note),
-        u7(message.velocity),
+        [
+          channelVoiceStatus(statusBytes.NoteOn, message.channel),
+          u7(message.note),
+          u7(message.velocity),
+        ],
       ]
     }
     case 'PolyKeyPressure': {
       return [
-        channelVoiceStatus(statusBytes.PolyKeyPressure, message.channel),
-        u7(message.note),
-        u7(message.pressure),
+        [
+          channelVoiceStatus(statusBytes.PolyKeyPressure, message.channel),
+          u7(message.note),
+          u7(message.pressure),
+        ],
       ]
     }
     case 'ControlChange': {
-      return cc(message.channel, message.control, message.value)
-    }
-    case 'ControlChange14': {
-      if (message.control < 0 || message.control > 0b11111) {
-        throw new TypeError(
-          'Fine (MSB+LSB) control messages are only defined for controller numbers 0 - 31.'
-        )
+      if (
+        message.control >= 0 &&
+        message.control <= 0b11111 &&
+        message.value > 0x7f
+      ) {
+        // Encode a fine-grained CC message.
+        const value = u14ToMsbLsb(message.value)
+        return [
+          cc(message.channel, message.control, value.msb),
+          cc(message.channel, lsb(message.control), value.lsb),
+        ]
       }
-      const value = u14ToMsbLsb(message.value)
-      return [
-        ...cc(message.channel, message.control, value.msb),
-        ...cc(message.channel, lsb(message.control), value.lsb),
-      ]
+      return [cc(message.channel, message.control, message.value)]
     }
     case 'ProgramChange': {
       return [
-        channelVoiceStatus(statusBytes.ProgramChange, message.channel),
-        u7(message.number),
+        [
+          channelVoiceStatus(statusBytes.ProgramChange, message.channel),
+          u7(message.number),
+        ],
       ]
     }
     case 'ChannelKeyPressure': {
       return [
-        channelVoiceStatus(statusBytes.ChannelKeyPressure, message.channel),
-        u7(message.pressure),
+        [
+          channelVoiceStatus(statusBytes.ChannelKeyPressure, message.channel),
+          u7(message.pressure),
+        ],
       ]
     }
     case 'PitchBendChange': {
       const value = u14ToMsbLsb(message.value)
       return [
-        channelVoiceStatus(statusBytes.PitchBendChange, message.channel),
-        value.lsb,
-        value.msb,
+        [
+          channelVoiceStatus(statusBytes.PitchBendChange, message.channel),
+          value.lsb,
+          value.msb,
+        ],
       ]
     }
     case 'RPNChange': {
       const parameter = u14ToMsbLsb(message.parameter)
       const value = u14ToMsbLsb(message.value)
       return [
-        ...cc(message.channel, controlNumbers.rpnMsb, parameter.msb),
-        ...cc(message.channel, controlNumbers.rpnLsb, parameter.lsb),
-        ...cc(message.channel, controlNumbers.dataEntryMsb, value.msb),
-        ...cc(message.channel, lsb(controlNumbers.dataEntryMsb), value.lsb),
+        cc(message.channel, controlNumbers.rpnMsb, parameter.msb),
+        cc(message.channel, controlNumbers.rpnLsb, parameter.lsb),
+        cc(message.channel, controlNumbers.dataEntryMsb, value.msb),
+        cc(message.channel, lsb(controlNumbers.dataEntryMsb), value.lsb),
       ]
     }
     case 'NRPNChange': {
       const parameter = u14ToMsbLsb(message.parameter)
       const value = u14ToMsbLsb(message.value)
       return [
-        ...cc(message.channel, controlNumbers.nrpnMsb, parameter.msb),
-        ...cc(message.channel, controlNumbers.nrpnLsb, parameter.lsb),
-        ...cc(message.channel, controlNumbers.dataEntryMsb, value.msb),
-        ...cc(message.channel, lsb(controlNumbers.dataEntryMsb), value.lsb),
+        cc(message.channel, controlNumbers.nrpnMsb, parameter.msb),
+        cc(message.channel, controlNumbers.nrpnLsb, parameter.lsb),
+        cc(message.channel, controlNumbers.dataEntryMsb, value.msb),
+        cc(message.channel, lsb(controlNumbers.dataEntryMsb), value.lsb),
       ]
     }
 
     // Channel mode messages
 
     case 'AllSoundOff': {
-      return cc(message.channel, controlNumbers.AllSoundOff, 0)
+      return [cc(message.channel, controlNumbers.AllSoundOff, 0)]
     }
     case 'ResetAllControllers': {
-      return cc(message.channel, controlNumbers.ResetAllControllers, 0)
+      return [cc(message.channel, controlNumbers.ResetAllControllers, 0)]
     }
     case 'LocalControl': {
       const value = bool(message.value)
-      return cc(message.channel, controlNumbers.LocalControl, value)
+      return [cc(message.channel, controlNumbers.LocalControl, value)]
     }
     case 'AllNotesOff': {
-      return cc(message.channel, controlNumbers.AllNotesOff, 0)
+      return [cc(message.channel, controlNumbers.AllNotesOff, 0)]
     }
     case 'OmniOff': {
-      return cc(message.channel, controlNumbers.OmniOff, 0)
+      return [cc(message.channel, controlNumbers.OmniOff, 0)]
     }
     case 'OmniOn': {
-      return cc(message.channel, controlNumbers.OmniOn, 0)
+      return [cc(message.channel, controlNumbers.OmniOn, 0)]
     }
     case 'MonoMode': {
-      return cc(message.channel, controlNumbers.MonoMode, 0)
+      return [cc(message.channel, controlNumbers.MonoMode, 0)]
     }
     case 'PolyMode': {
-      return cc(message.channel, controlNumbers.PolyMode, 0)
+      return [cc(message.channel, controlNumbers.PolyMode, 0)]
     }
 
     //
@@ -168,48 +184,48 @@ export function encode(message: MIDIMessage): number[] {
 
     case 'SysEx': {
       const data = message.data.map(n => u7(n))
-      return [statusBytes.SysEx, u7(message.deviceId), ...data, eox]
+      return [[statusBytes.SysEx, ...deviceId(message.deviceId), ...data, eox]]
     }
 
     case 'MTCQuarterFrame': {
-      return [statusBytes.MTCQuarterFrame, u7(message.data)]
+      return [[statusBytes.MTCQuarterFrame, u7(message.data)]]
     }
 
     case 'SongPositionPointer': {
       const position = u14ToMsbLsb(message.position)
-      return [statusBytes.SongPositionPointer, position.lsb, position.msb]
+      return [[statusBytes.SongPositionPointer, position.lsb, position.msb]]
     }
 
     case 'SongSelect': {
-      return [statusBytes.SongSelect, u7(message.number)]
+      return [[statusBytes.SongSelect, u7(message.number)]]
     }
 
     case 'TuneRequest': {
-      return [statusBytes.TuneRequest]
+      return [[statusBytes.TuneRequest]]
     }
 
     case 'TimingClock': {
-      return [statusBytes.TimingClock]
+      return [[statusBytes.TimingClock]]
     }
 
     case 'Start': {
-      return [statusBytes.Start]
+      return [[statusBytes.Start]]
     }
 
     case 'Continue': {
-      return [statusBytes.Continue]
+      return [[statusBytes.Continue]]
     }
 
     case 'Stop': {
-      return [statusBytes.Stop]
+      return [[statusBytes.Stop]]
     }
 
     case 'ActiveSensing': {
-      return [statusBytes.ActiveSensing]
+      return [[statusBytes.ActiveSensing]]
     }
 
     case 'SystemReset': {
-      return [statusBytes.SystemReset]
+      return [[statusBytes.SystemReset]]
     }
 
     default: {
@@ -218,7 +234,7 @@ export function encode(message: MIDIMessage): number[] {
   }
 }
 
-function cc(channel: Channel, control: number, value: number): number[] {
+function cc(channel: Channel, control: number, value: number): EncodedMessage {
   return [
     channelVoiceStatus(statusBytes.ControlChange, channel),
     u7(control),
@@ -227,33 +243,42 @@ function cc(channel: Channel, control: number, value: number): number[] {
 }
 
 function channelVoiceStatus(messageType: number, channel: Channel): number {
-  if (channel < 1 || channel > 16) {
-    throw new TypeError(`encodeStatus: invalid channel: ${channel}`)
-  }
   return messageType + u4(channel - 1)
-}
-
-function u4(n: number): number {
-  return n & 0b00001111
-}
-
-function u7(n: number): number {
-  return n & 0b01111111
-}
-
-function bool(b: boolean): number {
-  return b ? 0b01111111 : 0
-}
-
-function u14ToMsbLsb(n: number): { msb: number; lsb: number } {
-  return {
-    msb: u7(n >> 7),
-    lsb: u7(n),
-  }
 }
 
 function lsb(msbControlNumber: number) {
   return 0x20 + msbControlNumber
+}
+
+function deviceId(id: SysExDeviceID) {
+  if (typeof id === 'number') {
+    return [u7(id)]
+  } else if (id.length === 1 || id.length === 3) {
+    return id.map(n => u7(n))
+  } else {
+    throw new TypeError(
+      `device id must be 1 byte or 3 bytes long. instead: ${id}`
+    )
+  }
+}
+
+function u4(n: number): U4 {
+  return n & 0b00001111
+}
+
+function u7(n: number): U7 {
+  return n & 0b01111111
+}
+
+function bool(b: boolean): U7 {
+  return b ? 0b01111111 : 0
+}
+
+function u14ToMsbLsb(n: U14): { msb: U7; lsb: U7 } {
+  return {
+    msb: u7(n >> 7),
+    lsb: u7(n),
+  }
 }
 
 function exhaustive(message: never): never {

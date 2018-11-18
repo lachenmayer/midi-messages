@@ -10,75 +10,67 @@ type MIDIChannelVoiceMessage =
   | ProgramChange
   | ChannelKeyPressure
   | PitchBendChange
-  | ControlChange14
   | RPNChange
   | NRPNChange
 
 type NoteOff = {
   type: 'NoteOff'
   channel: Channel
-  note: number // U7
-  velocity: number // U7
+  note: U7
+  velocity: U7
 }
 
 type NoteOn = {
   type: 'NoteOn'
   channel: Channel
-  note: number // U7
-  velocity: number // U7
+  note: U7
+  velocity: U7
 }
 
 type PolyKeyPressure = {
   type: 'PolyKeyPressure'
   channel: Channel
-  note: number // U7
-  pressure: number // U7
+  note: U7
+  pressure: U7
 }
 
 type ControlChange = {
   type: 'ControlChange'
   channel: Channel
-  control: number // U7
-  value: number // U7
-}
-
-type ControlChange14 = {
-  type: 'ControlChange14'
-  channel: Channel
-  control: number // U5
-  value: number // U14
+  control: U7
+  value: U7 | U14
 }
 
 type ProgramChange = {
   type: 'ProgramChange'
   channel: Channel
-  number: number // U7
+  number: U7
 }
 
 type ChannelKeyPressure = {
   type: 'ChannelKeyPressure'
   channel: Channel
-  pressure: number // U7
+  pressure: U7
 }
 
 type PitchBendChange = {
   type: 'PitchBendChange'
   channel: Channel
-  value: number // U14
+  value: U14
 }
 
 type RPNChange = {
   type: 'RPNChange'
   channel: Channel
-  parameter: number // U14
-  value: number // U14
+  parameter: U14
+  value: U14
 }
 
 type NRPNChange = {
   type: 'NRPNChange'
   channel: Channel
-  parameter: number // U14
-  value: number // U14
+  parameter: U14
+  value: U14
 }
 
 type MIDIChannelModeMessage =
@@ -166,25 +158,28 @@ type MIDISystemMessage =
 
 type SysEx = {
   type: 'SysEx'
-  deviceId: number
-  data: number[]
+  deviceId: SysExDeviceID
+  data: U7[]
 }
+
+// See MIDI 1.0 Detailed Specification 4.2 p34-35 (p66-67 in PDF)
+type SysExDeviceID = U7 | [U7] | [U7, U7, U7]
 
 // TODO implement proper parsing of MTC values
 // See MIDI Time Code spec p1 (p116 of complete spec)
 type MTCQuarterFrame = {
   type: 'MTCQuarterFrame'
-  data: number
+  data: U7
 }
 
 type SongPositionPointer = {
   type: 'SongPositionPointer'
-  position: number // U14
+  position: U14
 }
 
 type SongSelect = {
   type: 'SongSelect'
-  number: number // U7
+  number: U7
 }
 
 type TuneRequest = {
@@ -214,3 +209,14 @@ type ActiveSensing = {
 type SystemReset = {
   type: 'SystemReset'
 }
+
+// One of:
+//   [status, data, data]
+//   [status, data]
+//   [status]
+//   [0xF0, ...data, 0xF7] (sysex message)
+type EncodedMessage = number[]
+
+type U4 = number
+type U7 = number
+type U14 = number
