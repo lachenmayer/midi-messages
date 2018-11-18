@@ -1,5 +1,5 @@
 {
-  "name": "nanomidi",
+  "name": "@lachenmayer/midi-messages",
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
@@ -8,5 +8,5 @@
   },
   "keywords": [],
   "author": "harry lachenmayer <harrylachenmayer@gmail.com>",
-  "license": "ISC"
+  "license": "MIT"
 }
