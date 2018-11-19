@@ -1,9 +1,12 @@
 // Status bytes are the only bytes that have the most significant bit set.
 // MIDI Spec 1.0 Page 100, Table 1
 // https://www.midi.org/specifications/item/table-1-summary-of-midi-message
-const statusBytes = {
-  // Channel voice messages
-  // The second nibble is used to encode the channel (0-F).
+
+// Channel voice messages
+// The second nibble is used to encode the channel (0-F).
+const channelVoiceMessageStatusBytes: {
+  [type in MIDIChannelVoiceMessage['type']]: number
+} = {
   NoteOff: 0x80,
   NoteOn: 0x90,
   PolyKeyPressure: 0xa0,
@@ -11,8 +14,11 @@ const statusBytes = {
   ProgramChange: 0xc0,
   ChannelKeyPressure: 0xd0,
   PitchBendChange: 0xe0,
+}
 
-  // System messages
+const systemMessageStatusBytes: {
+  [type in MIDISystemMessage['type']]: number
+} = {
   SysEx: 0xf0,
   MTCQuarterFrame: 0xf1,
   SongPositionPointer: 0xf2,
@@ -24,6 +30,12 @@ const statusBytes = {
   Stop: 0xfc,
   ActiveSensing: 0xfe,
   SystemReset: 0xff,
+}
+const systemMessageTypes = invert(systemMessageStatusBytes)
+
+const statusBytes = {
+  ...channelVoiceMessageStatusBytes,
+  ...systemMessageStatusBytes,
 }
 
 // Control numbers for control change messages.
@@ -246,6 +258,7 @@ function channelVoiceStatus(messageType: number, channel: Channel): number {
   return messageType + u4(channel - 1)
 }
 
+// Returns the CC control number that sets the LSB (fine) value of the given control number.
 function lsb(msbControlNumber: number) {
   return 0x20 + msbControlNumber
 }
@@ -263,15 +276,15 @@ function deviceId(id: SysExDeviceID) {
 }
 
 function u4(n: number): U4 {
-  return n & 0b00001111
+  return n & 0b0000_1111
 }
 
 function u7(n: number): U7 {
-  return n & 0b01111111
+  return n & 0b0111_1111
 }
 
 function bool(b: boolean): U7 {
-  return b ? 0b01111111 : 0
+  return b ? 0b0111_1111 : 0
 }
 
 function u14ToMsbLsb(n: U14): { msb: U7; lsb: U7 } {
@@ -283,4 +296,297 @@ function u14ToMsbLsb(n: U14): { msb: U7; lsb: U7 } {
 
 function exhaustive(message: never): never {
   throw new TypeError(`message not implemented: ${message}`)
+}
+
+export function decode(buf: BufferLike): MIDIMessage[] {
+  let messages: MIDIMessage[] = []
+  let runningStatus: number | null = null
+  let i = 0
+
+  while (i < buf.length) {
+    const statusByte = readStatusByte()
+    if (isChannelVoiceMessage(statusByte)) {
+      runningStatus = statusByte
+      readChannelVoiceMessage(statusByte)
+    } else if (isSystemMessage(statusByte)) {
+      runningStatus = null
+      readSystemMessage(statusByte)
+    } else {
+      throw new OutOfRangeError(
+        `byte at index ${i} is not a byte: ${statusByte}`
+      )
+    }
+  }
+
+  const mergedMessages = mergeMsbLsbCCMessages(messages)
+
+  return mergedMessages
+
+  function readStatusByte() {
+    let statusByte = peek()
+    assertByte(statusByte)
+    if (isDataByte(statusByte)) {
+      if (runningStatus != null) {
+        statusByte = runningStatus
+      } else {
+        throw new UnexpectedDataError(
+          `did not expect data at index ${i}: ${statusByte}`
+        )
+      }
+    } else {
+      statusByte = next()
+    }
+    return statusByte
+  }
+
+  function readChannelVoiceMessage(statusByte: number) {
+    const { type: type_, channel } = parseChannelVoiceMessageStatus(statusByte)
+    // This constraint should be in parseChannelVoiceMessageStatus return type,
+    // but Object.entries loses this constraint unfortunately.
+    const type = type_ as MIDIChannelVoiceMessage['type']
+    switch (type) {
+      case 'NoteOff': {
+        const note = readU7()
+        const velocity = readU7()
+        push({ type, channel, note, velocity })
+        break
+      }
+      case 'NoteOn': {
+        const note = readU7()
+        const velocity = readU7()
+        push({ type, channel, note, velocity })
+        break
+      }
+      case 'PolyKeyPressure': {
+        const note = readU7()
+        const pressure = readU7()
+        push({ type, channel, note, pressure })
+        break
+      }
+      case 'ControlChange': {
+        const control = readU7()
+        const value = readU7()
+        if (control == controlNumbers.AllSoundOff) {
+          push({ type: 'AllSoundOff', channel })
+        } else if (control == controlNumbers.ResetAllControllers) {
+          push({ type: 'ResetAllControllers', channel })
+        } else if (control == controlNumbers.LocalControl) {
+          push({
+            type: 'LocalControl',
+            channel,
+            value: parseBool(value),
+          })
+        } else if (control == controlNumbers.AllNotesOff) {
+          push({ type: 'AllNotesOff', channel })
+        } else if (control == controlNumbers.OmniOff) {
+          push({ type: 'OmniOff', channel })
+        } else if (control == controlNumbers.OmniOn) {
+          push({ type: 'OmniOn', channel })
+        } else if (control == controlNumbers.MonoMode) {
+          push({ type: 'MonoMode', channel })
+        } else if (control == controlNumbers.PolyMode) {
+          push({ type: 'PolyMode', channel })
+        } else {
+          push({ type, channel, control, value })
+        }
+        break
+      }
+      case 'ProgramChange': {
+        const number = readU7()
+        push({ type, channel, number })
+        break
+      }
+      case 'ChannelKeyPressure': {
+        const pressure = readU7()
+        push({ type, channel, pressure })
+        break
+      }
+      case 'PitchBendChange': {
+        const value = readU14()
+        push({ type, channel, value })
+        break
+      }
+      default: {
+        throw new InternalError(`case not implemented: ${type}`)
+      }
+    }
+  }
+
+  function readSystemMessage(statusByte: number) {
+    const type = systemMessageTypes[statusByte] as MIDISystemMessage['type']
+    switch (type) {
+      case 'SysEx': {
+        const deviceId = readU7()
+        const data = readSysExData()
+        push({ type, deviceId, data })
+        break
+      }
+      case 'MTCQuarterFrame': {
+        const data = readU7()
+        push({ type, data })
+        break
+      }
+      case 'SongPositionPointer': {
+        const position = readU14()
+        push({ type, position })
+        break
+      }
+      case 'SongSelect': {
+        const number = readU7()
+        push({ type, number })
+        break
+      }
+      case 'TuneRequest': {
+        push({ type })
+        break
+      }
+      case 'TimingClock': {
+        push({ type })
+        break
+      }
+      case 'Start': {
+        push({ type })
+        break
+      }
+      case 'Continue': {
+        push({ type })
+        break
+      }
+      case 'Stop': {
+        push({ type })
+        break
+      }
+      case 'ActiveSensing': {
+        push({ type })
+        break
+      }
+      case 'SystemReset': {
+        push({ type })
+        break
+      }
+      default: {
+        throw new InternalError(`case not implemented: ${type}`)
+      }
+    }
+  }
+
+  function readSysExData() {
+    const data = []
+    for (let byte = next(); byte != eox; byte = next()) {
+      assertU7(byte)
+      data.push(byte)
+    }
+    return data
+  }
+
+  function readU14(): U14 {
+    const lsb = next()
+    const msb = next()
+    return msbLsbToU14(msb, lsb)
+  }
+
+  function readU7(): U7 {
+    const byte = next()
+    assertU7(byte)
+    return byte
+  }
+
+  function push(message: MIDIMessage) {
+    messages.push(message)
+  }
+
+  function peek() {
+    return buf[i]
+  }
+
+  function next() {
+    const next = buf[i]
+    i++
+    return next
+  }
+}
+
+function mergeMsbLsbCCMessages(messages: MIDIMessage[]): MIDIMessage[] {
+  const mergedMessages = []
+  for (let i = 0; i < messages.length; i++) {
+    const message = messages[i]
+    // Only the first 32 CC messages are defined as MSB/LSB (coarse/fine) messages.
+    if (message.type === 'ControlChange' && message.control < 32) {
+      const lsbMessage = messages[i + 1]
+      // If the next message sets the LSB (fine) value, merge the values.
+      if (
+        lsbMessage != null &&
+        lsbMessage.type === 'ControlChange' &&
+        lsbMessage.control === lsb(message.control)
+      ) {
+        message.value = msbLsbToU14(message.value, lsbMessage.value)
+        i++ // Skip the next message.
+      }
+    }
+    mergedMessages.push(message)
+  }
+  return mergedMessages
+}
+
+function parseChannelVoiceMessageStatus(
+  byte: any
+): { type: string; channel: Channel } {
+  for (const [type, statusByte] of Object.entries(
+    channelVoiceMessageStatusBytes
+  )) {
+    if (byte >= statusByte && byte <= statusByte + 0b1111) {
+      const channel = u4(byte) + 1
+      return { type, channel }
+    }
+  }
+  throw new InternalError(
+    'should not attempt to parse channel voice message unless we know the byte is a channel voice message status byte.'
+  )
+}
+
+function isDataByte(byte: any): boolean {
+  return byte >= 0x00 && byte <= 0x7f
+}
+
+function isChannelVoiceMessage(byte: any): boolean {
+  return byte >= 0x80 && byte <= 0xef
+}
+
+function isSystemMessage(byte: any): boolean {
+  return byte >= 0xf0 && byte <= 0xff
+}
+
+function parseBool(byte: number): boolean {
+  assertU7(byte)
+  return byte >= 64
+}
+
+function msbLsbToU14(msb: number, lsb: number): U14 {
+  assertU7(msb)
+  assertU7(lsb)
+  return (msb << 7) + lsb
+}
+
+function assertU7(byte: any) {
+  if (byte < 0 || byte > 0b0111_1111) {
+    throw new OutOfRangeError(`expected a data byte (U7), got: ${byte}`)
+  }
+}
+
+function assertByte(byte: any) {
+  if (byte < 0 || byte > 0b1111_1111) {
+    throw new OutOfRangeError(`expected a byte (0-FF), got: ${byte}`)
+  }
+}
+
+class UnexpectedDataError extends Error {}
+class OutOfRangeError extends Error {}
+class InternalError extends Error {}
+
+function invert(map: { [key: string]: number }): { [key: number]: string } {
+  const inverted: { [key: number]: string } = {}
+  for (let [key, value] of Object.entries(map)) {
+    inverted[value] = key
+  }
+  return inverted
 }

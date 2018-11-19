@@ -1,6 +1,10 @@
 type MIDIMessage = MIDIChannelMessage | MIDISystemMessage
 
-type MIDIChannelMessage = MIDIChannelVoiceMessage | MIDIChannelModeMessage
+type MIDIChannelMessage =
+  | MIDIChannelVoiceMessage
+  | MIDIChannelModeMessage
+  | RPNChange
+  | NRPNChange
 
 type MIDIChannelVoiceMessage =
   | NoteOff
@@ -10,8 +14,6 @@ type MIDIChannelVoiceMessage =
   | ProgramChange
   | ChannelKeyPressure
   | PitchBendChange
-  | RPNChange
-  | NRPNChange
 
 type NoteOff = {
   type: 'NoteOff'
@@ -124,24 +126,8 @@ type PolyMode = {
   channel: Channel
 }
 
-// 1-indexed
-type Channel =
-  | 1
-  | 2
-  | 3
-  | 4
-  | 5
-  | 6
-  | 7
-  | 8
-  | 9
-  | 10
-  | 11
-  | 12
-  | 13
-  | 14
-  | 15
-  | 16
+// 1-indexed, 1-16
+type Channel = number
 
 type MIDISystemMessage =
   | SysEx
@@ -220,3 +206,8 @@ type EncodedMessage = number[]
 type U4 = number
 type U7 = number
 type U14 = number
+
+interface BufferLike {
+  [byte: number]: number
+  length: number
+}

@@ -1,6 +1,6 @@
 declare type MIDIMessage = MIDIChannelMessage | MIDISystemMessage;
-declare type MIDIChannelMessage = MIDIChannelVoiceMessage | MIDIChannelModeMessage;
-declare type MIDIChannelVoiceMessage = NoteOff | NoteOn | PolyKeyPressure | ControlChange | ProgramChange | ChannelKeyPressure | PitchBendChange | RPNChange | NRPNChange;
+declare type MIDIChannelMessage = MIDIChannelVoiceMessage | MIDIChannelModeMessage | RPNChange | NRPNChange;
+declare type MIDIChannelVoiceMessage = NoteOff | NoteOn | PolyKeyPressure | ControlChange | ProgramChange | ChannelKeyPressure | PitchBendChange;
 declare type NoteOff = {
     type: 'NoteOff';
     channel: Channel;
@@ -86,7 +86,7 @@ declare type PolyMode = {
     type: 'PolyMode';
     channel: Channel;
 };
-declare type Channel = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16;
+declare type Channel = number;
 declare type MIDISystemMessage = SysEx | MTCQuarterFrame | SongPositionPointer | SongSelect | TuneRequest | TimingClock | Start | Continue | Stop | ActiveSensing | SystemReset;
 declare type SysEx = {
     type: 'SysEx';
@@ -131,3 +131,7 @@ declare type EncodedMessage = number[];
 declare type U4 = number;
 declare type U7 = number;
 declare type U14 = number;
+interface BufferLike {
+    [byte: number]: number;
+    length: number;
+}
