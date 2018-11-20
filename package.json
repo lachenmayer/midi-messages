@@ -4,6 +4,7 @@
   "description": "",
   "main": "lib/index.js",
   "scripts": {
+    "build": "tsc",
     "dev": "tsc --watch",
     "test": "node lib/test.js"
   },
@@ -11,8 +12,12 @@
   "author": "harry lachenmayer <harrylachenmayer@gmail.com>",
   "license": "MIT",
   "devDependencies": {
+    "@types/node": "^10.12.9",
     "@types/tape": "^4.2.32",
     "tape": "^4.9.1",
     "typescript": "^3.1.6"
+  },
+  "dependencies": {
+    "readable-stream": "^3.0.6"
   }
 }

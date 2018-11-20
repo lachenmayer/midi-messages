@@ -135,3 +135,4 @@ interface BufferLike {
     [byte: number]: number;
     length: number;
 }
+declare type NodeCallback = (error: Error | null | undefined) => void;

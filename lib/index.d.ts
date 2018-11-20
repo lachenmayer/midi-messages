@@ -1,2 +1,3 @@
-export declare function encode(message: MIDIMessage): EncodedMessage[];
-export declare function decode(buf: BufferLike): MIDIMessage[];
+export { encode } from './encode';
+export { EncodeStream } from './EncodeStream';
+export { DecodeStream } from './DecodeStream';
