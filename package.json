@@ -1,7 +1,7 @@
 {
   "name": "@lachenmayer/midi-messages",
   "version": "1.0.0",
-  "description": "",
+  "description": "A MIDI message encoder/decoder",
   "main": "lib/index.js",
   "scripts": {
     "build": "tsc",
@@ -17,6 +17,10 @@
   ],
   "author": "harry lachenmayer <harrylachenmayer@gmail.com>",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/lachenmayer/midi-messages"
+  },
   "devDependencies": {
     "@types/node": "^10.12.9",
     "@types/tape": "^4.2.32",
