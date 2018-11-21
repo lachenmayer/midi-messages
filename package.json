@@ -8,7 +8,13 @@
     "dev": "tsc --watch",
     "test": "node lib/test.js"
   },
-  "keywords": [],
+  "keywords": [
+    "midi",
+    "music",
+    "stream",
+    "encode",
+    "decode"
+  ],
   "author": "harry lachenmayer <harrylachenmayer@gmail.com>",
   "license": "MIT",
   "devDependencies": {
