@@ -46,13 +46,12 @@ encode.on('data', buf => {
 
 encode.noteOn(1, 64, 100)
 // ...equivalent to:
-encode.write({ type: 'NoteOn', channel: 1, note: 64, velocity: 100 })
+// encode.write({ type: 'NoteOn', channel: 1, note: 64, velocity: 100 })
 ```
 
 **Output:**
 
 ```
-<Buffer 90 40 64>
 <Buffer 90 40 64>
 ```
 
